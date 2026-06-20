@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Felt &amp; Bower — Euchre</title>
 <style>
   :root{
@@ -312,12 +312,84 @@
   .rules b{color:var(--txt);}
   .winline{font-size:18px; margin:10px 0 0;}
 
-  @media (max-width:720px){
-    #top-wrap{flex-direction:column;}
-    #sidebar{width:100%; flex-direction:row; flex-wrap:wrap; border-left:none; border-top:1px solid var(--line); order:2; max-height:38vh;}
-    #sidebar .scorecard{flex:1 1 160px;}
-    #log{display:none;}
-    #controls{bottom: calc(var(--ch) * 1.05 + 16px);}
+  @media (max-width:768px){
+    :root{ --cw: clamp(42px, 12.8vw, 60px); }
+    #app{ height:100dvh; }
+    #top-wrap{ flex-direction:column; }
+
+    /* compact HUD strip pinned to the top */
+    #sidebar{
+      order:-1; width:100%; flex:0 0 auto; flex-direction:row; flex-wrap:nowrap;
+      align-items:center; gap:6px; padding:6px 8px;
+      border-left:none; border-bottom:1px solid var(--line);
+      max-height:none; overflow-x:auto; overflow-y:hidden;
+    }
+    .brandbar{ display:none; }
+    #sidebar .scorecard{ flex:0 0 auto; padding:5px 8px; display:flex; align-items:center; gap:8px; }
+    .scorecard h2{ display:none; }
+    .scorerow{ margin:0; padding:3px 9px; flex-direction:column; align-items:center; gap:0; min-width:48px; }
+    .scorerow .who{ font-size:8px; letter-spacing:0; }
+    .scorerow .who small{ display:none; }
+    .scorerow .pts{ font-size:20px; }
+    .scoretrack{ display:none; }
+    .infogrid{ display:flex; gap:6px; flex:0 0 auto; grid-template-columns:none; }
+    .chip{ padding:4px 8px; }
+    .chip .k{ font-size:7px; }
+    .chip .v{ font-size:12px; }
+    #status{ display:none; }
+    #log{ display:none; }
+    .toolrow{ display:flex; flex:0 0 auto; gap:6px; grid-template-columns:none; }
+    .toolrow button{ width:auto; padding:7px 9px; font-size:11px; white-space:nowrap; }
+
+    /* table fills the rest of the screen */
+    #table{ inset:6px; border-radius:20px; }
+    #table::before{ font-size:30px; }
+    #table::after{ inset:10px; }
+
+    /* compact seats */
+    .seat-label{ min-width:0; padding:3px 7px; gap:2px; }
+    .seat-label .nm{ font-size:10px; } .seat-label .sub{ font-size:8px; }
+    .seat-label .teamtag{ font-size:7px; padding:1px 4px; }
+    .seat-label .pips{ height:7px; } .seat-label .pips i{ width:7px; height:7px; }
+    .lbl-1{ left:4px; top:calc(50% - 58px); transform:none; }
+    .lbl-3{ right:4px; top:calc(50% - 58px); transform:none; }
+    .lbl-1.active{ transform:scale(1.04); } .lbl-3.active{ transform:scale(1.04); }
+    /* move your label into the corner so it doesn't sit on your hand */
+    .lbl-0{ left:6px; bottom:6px; transform:none; }
+    .lbl-0.active{ transform:scale(1.04); }
+    .lbl-2{ top:6px; }
+
+    /* hands kept inside the felt */
+    #hand-0{ bottom: calc(var(--ch)*.02 + 6px); }
+    #hand-2{ top: 42px; }
+    #hand-1{ left:26px; top:50%; }
+    #hand-3{ right:auto; left:calc(100% - 92px); top:50%; }
+
+    /* bidding controls become a panel just above your hand */
+    #controls{ bottom: calc(var(--ch) + 16px); width:94%; gap:6px;
+      background:rgba(6,14,10,.62); border:1px solid var(--line); border-radius:14px; padding:8px;
+      -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); }
+    #control-title{ font-size:12px; }
+    #control-hint{ font-size:11px; padding:6px 9px; max-width:90vw; }
+    #control-buttons{ gap:7px; }
+    #control-buttons button{ padding:8px 11px; font-size:13px; }
+    .suit-btn{ min-width:44px; font-size:16px; }
+    .alone-toggle{ font-size:11px; padding:5px 10px; }
+
+    #banner .big{ font-size:28px; } #banner .small{ font-size:13px; }
+    .overlay{ align-items:flex-start; padding:10px; overflow:auto; }
+    .panel{ padding:18px 16px; max-height:none; }
+    .panel h1{ font-size:24px; }
+    .player-cfg{ padding:8px 10px; }
+    .seg button{ padding:6px 9px; font-size:11px; }
+
+    /* clearer tap targets: playable cards glow, illegal dim (no hover on touch) */
+    .card.playable .face{ box-shadow: var(--shadow), inset 0 0 0 1px rgba(0,0,0,.12), 0 0 0 2px rgba(57,217,138,.55); }
+  }
+  @media (max-width:768px) and (orientation:landscape){
+    /* short height in landscape: shrink cards and HUD so the table still fits */
+    :root{ --cw: clamp(38px, 7.2vw, 56px); }
+    #hand-2{ top: 36px; }
   }
 </style>
 </head>
@@ -818,20 +890,21 @@ function layoutHand(seat){
   const el=handEls[seat];
   const cards=[...el.querySelectorAll('.card')];
   const n=cards.length;
-  const horizontal = (seat===1||seat===3); // these containers are positioned; we fan horizontally then they sit on the side
+  const MOB = window.innerWidth<=768;
   cards.forEach((c,i)=>{
     const mid=(n-1)/2; const off=i-mid;
     let tf, hover='';
     if(seat===0){
-      const spread = Math.min(54, (window.innerWidth*0.6)/Math.max(n,1));
-      tf=`translateX(${off*spread}px) translateY(${Math.abs(off)*7}px) rotate(${off*5}deg)`;
-      hover=`translateX(${off*spread}px) translateY(${Math.abs(off)*7}px) rotate(${off*5}deg)`;
+      const cap = MOB? 44 : 54;
+      const factor = MOB? 0.62 : 0.6;
+      const lift = MOB? 5 : 7;
+      const spread = Math.min(cap, (window.innerWidth*factor)/Math.max(n,1));
+      tf=`translateX(${off*spread}px) translateY(${Math.abs(off)*lift}px) rotate(${off*5}deg)`;
+      hover=tf;
     } else if(seat===2){
-      tf=`translateX(${off*24}px) rotate(${off*4}deg)`;
-    } else if(seat===1){
-      tf=`translateX(${off*22}px) rotate(${off*3}deg)`;
-    } else {
-      tf=`translateX(${off*22}px) rotate(${off*3}deg)`;
+      tf=`translateX(${off*(MOB?13:24)}px) rotate(${off*4}deg)`;
+    } else { // side hands (1 = West, 3 = East)
+      tf=`translateX(${off*(MOB?8:22)}px) rotate(${off*3}deg)`;
     }
     c.style.setProperty('--hover',hover||tf);
     c.style.transform=tf;
