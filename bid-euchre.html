@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Felt &amp; Bower — Bid Euchre</title>
+<style>
+  :root{
+    --cw: clamp(48px, 6.2vw, 76px);
+    --ch: calc(var(--cw) * 1.42);
+    --felt1:#0b6b3a; --felt2:#064d29; --felt3:#053b20;
+    --gold:#e9c46a; --gold2:#c99a3a;
+    --ink:#13202b;
+    --red:#c01c2e; --black:#1a2530;
+    --panel:#11171d; --panel2:#1b242d;
+    --line: rgba(255,255,255,.08);
+    --txt:#e8eef2; --muted:#9fb0bd;
+    --good:#39d98a; --bad:#ff6b6b;
+    --shadow: 0 10px 24px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0; font-family:"Segoe UI",Inter,system-ui,Helvetica,Arial,sans-serif;
+    color:var(--txt);
+    background:
+      radial-gradient(1200px 700px at 50% -10%, #1d2a35 0%, #0d141a 55%, #070b0f 100%);
+    overflow:hidden;
+    user-select:none;
+  }
+  .hidden{display:none !important;}
+
+  /* ---------- Layout ---------- */
+  #app{position:fixed; inset:0; display:flex; flex-direction:column;}
+  #top-wrap{flex:1; display:flex; min-height:0;}
+  #table-wrap{flex:1; position:relative; min-width:0;}
+  #sidebar{
+    width:clamp(220px, 22vw, 300px); flex:0 0 auto;
+    background:linear-gradient(180deg,var(--panel),#0c1116);
+    border-left:1px solid var(--line);
+    display:flex; flex-direction:column; gap:10px;
+    padding:14px; overflow:auto;
+  }
+
+  /* ---------- Felt table ---------- */
+  #table{
+    position:absolute; inset:14px;
+    border-radius:50%/30%;
+    background:
+      radial-gradient(120% 90% at 50% 35%, var(--felt1) 0%, var(--felt2) 58%, var(--felt3) 100%);
+    box-shadow: inset 0 0 60px rgba(0,0,0,.55), inset 0 0 0 14px rgba(0,0,0,.18), var(--shadow);
+    border:2px solid rgba(0,0,0,.4);
+    overflow:hidden;
+  }
+  #table::after{ /* felt sheen + rail */
+    content:""; position:absolute; inset:18px; border-radius:50%/30%;
+    box-shadow: inset 0 0 0 2px rgba(255,255,255,.05), inset 0 0 40px rgba(255,255,255,.04);
+    pointer-events:none;
+  }
+  #table::before{ /* center maker emblem */
+    content:"♣ ♦ ♠ ♥"; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    font-size:clamp(34px,7vw,72px); letter-spacing:.12em; color:rgba(255,255,255,.05);
+    font-weight:700; white-space:nowrap; pointer-events:none;
+  }
+
+  .seat-label{
+    position:absolute; display:flex; flex-direction:column; align-items:center; gap:4px;
+    padding:6px 12px; border-radius:12px; background:rgba(0,0,0,.32);
+    border:1px solid var(--line); backdrop-filter:blur(2px); z-index:30;
+    min-width:108px; transition: box-shadow .25s, border-color .25s, transform .25s;
+  }
+  .seat-label .nm{font-weight:700; font-size:13px; letter-spacing:.02em;}
+  .seat-label .sub{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em;}
+  .seat-label .pips{display:flex; gap:3px; height:9px;}
+  .seat-label .pips i{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.16); display:block;}
+  .seat-label .pips i.on{background:var(--gold); box-shadow:0 0 8px var(--gold);}
+  .seat-label.active{border-color:var(--gold); box-shadow:0 0 0 2px rgba(233,196,106,.35), 0 0 22px rgba(233,196,106,.25); transform:scale(1.04);}
+  .seat-label.team-you{}
+  .seat-label .teamtag{font-size:9px; padding:1px 6px; border-radius:8px; letter-spacing:.06em;}
+  .team-you .teamtag{background:rgba(57,217,138,.16); color:var(--good);}
+  .team-opp .teamtag{background:rgba(255,107,107,.16); color:var(--bad);}
+  .seat-label.sitting{opacity:.45; filter:grayscale(.5);}
+
+  .lbl-0{left:50%; bottom:6px; transform:translateX(-50%);}
+  .lbl-0.active{transform:translateX(-50%) scale(1.04);}
+  .lbl-2{left:50%; top:6px; transform:translateX(-50%);}
+  .lbl-2.active{transform:translateX(-50%) scale(1.04);}
+  .lbl-1{left:8px; top:50%; transform:translateY(-50%);}
+  .lbl-1.active{transform:translateY(-50%) scale(1.04);}
+  .lbl-3{right:8px; top:50%; transform:translateY(-50%);}
+  .lbl-3.active{transform:translateY(-50%) scale(1.04);}
+
+  .dealer-chip{
+    position:absolute; width:30px;height:30px;border-radius:50%; z-index:31;
+    background:radial-gradient(circle at 35% 30%, #fff, var(--gold) 45%, var(--gold2) 100%);
+    color:#5a3d06; font-weight:800; font-size:13px; display:flex;align-items:center;justify-content:center;
+    box-shadow:0 4px 10px rgba(0,0,0,.5), inset 0 0 0 2px rgba(255,255,255,.5);
+    transition: left .4s, top .4s; }
+
+  /* ---------- Hands ---------- */
+  .hand{position:absolute; z-index:20; display:block;}
+  #hand-0{left:50%; bottom: calc(var(--ch) * .15 + 38px); transform:translateX(-50%); height:var(--ch); }
+  #hand-2{left:50%; top: calc(var(--ch) * .05 + 40px); transform:translateX(-50%); height:var(--ch);}
+  #hand-1{left: calc(var(--ch) * .15 + 30px); top:50%; transform:translateY(-50%);}
+  #hand-3{right: calc(var(--ch) * .15 + 30px); top:50%; transform:translateY(-50%);}
+  .hand .slotpoint{position:absolute; left:0; top:0;}
+
+  /* ---------- Card ---------- */
+  .card{
+    position:absolute; width:var(--cw); height:var(--ch); left:0; top:0;
+    border-radius:calc(var(--cw) * .12);
+    transition: transform .35s cubic-bezier(.2,.8,.2,1), box-shadow .2s, filter .2s;
+    transform-origin:center bottom;
+    will-change:transform;
+  }
+  .card .face,.card .back{
+    position:absolute; inset:0; border-radius:inherit; backface-visibility:hidden;
+    -webkit-backface-visibility:hidden;
+  }
+  .card .face{
+    background:linear-gradient(160deg,#fdfdf8 0%, #f1efe4 100%);
+    box-shadow: var(--shadow), inset 0 0 0 1px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.9);
+    transform: rotateY(0deg);
+    display:flex; flex-direction:column; justify-content:space-between;
+    padding:calc(var(--cw)*.07);
+    overflow:hidden;
+  }
+  .card .back{
+    transform: rotateY(180deg);
+    background:
+      repeating-linear-gradient(45deg, #1b3a6b 0 6px, #16315a 6px 12px),
+      linear-gradient(135deg,#244a86,#13264a);
+    box-shadow: var(--shadow), inset 0 0 0 1px rgba(255,255,255,.12);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .card .back::after{
+    content:"♠"; font-size:calc(var(--cw)*.5); color:rgba(255,255,255,.22);
+    text-shadow:0 0 0 #fff; transform:rotate(-8deg);
+    border:2px solid rgba(255,255,255,.25); border-radius:50%;
+    width:calc(var(--cw)*.62); height:calc(var(--cw)*.62);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .card-inner{position:absolute; inset:0; transition:transform .45s; transform-style:preserve-3d;}
+  .card.down .card-inner{transform:rotateY(180deg);}
+
+  .corner{display:flex; flex-direction:column; align-items:center; line-height:.92; font-weight:800;}
+  .corner .r{font-size:calc(var(--cw)*.3);}
+  .corner .s{font-size:calc(var(--cw)*.26);}
+  .corner.br{align-self:flex-end; transform:rotate(180deg);}
+  .pip{align-self:center; font-size:calc(var(--cw)*.62); line-height:1; margin-top:calc(var(--cw)*-.05);}
+  .red{color:var(--red);}
+  .black{color:var(--black);}
+  .court{align-self:center; font-size:calc(var(--cw)*.34); font-weight:800; letter-spacing:.02em;
+    border:2px solid currentColor; border-radius:6px; padding:2px 6px; opacity:.92;}
+
+  .card.playable .face{cursor:pointer;}
+  .card.playable{cursor:pointer;}
+  .card.playable:hover{transform: var(--hover) translateY(-16px) !important; box-shadow:0 18px 30px rgba(0,0,0,.5); filter:brightness(1.06);}
+  .card.illegal{filter:grayscale(.65) brightness(.8);}
+  .card.in-trick{transition: transform .45s cubic-bezier(.2,.8,.2,1), opacity .35s;}
+  .card.win-flash .face{animation:winflash .5s ease;}
+  @keyframes winflash{0%,100%{box-shadow:var(--shadow);}50%{box-shadow:0 0 0 3px var(--gold), 0 0 26px var(--gold);}}
+  @keyframes dealIn{from{opacity:0;} to{opacity:1;}}
+
+  /* hint highlight on suggested card */
+  .card.hint .face{ animation:hintpulse 1.1s ease-in-out infinite; }
+  @keyframes hintpulse{0%,100%{box-shadow:var(--shadow), inset 0 0 0 1px rgba(0,0,0,.12);}50%{box-shadow:0 0 0 3px var(--gold), 0 0 24px rgba(233,196,106,.85), inset 0 0 0 1px rgba(0,0,0,.12);}}
+  .card.hint::after{content:"★ pick"; position:absolute; top:-16px; left:50%; transform:translateX(-50%);
+    color:#3a2a05; background:linear-gradient(180deg,#f0cf7a,#cf9f3f); font-size:9px; font-weight:800;
+    padding:2px 7px; border-radius:8px; white-space:nowrap; box-shadow:0 3px 8px rgba(0,0,0,.4); z-index:6; letter-spacing:.04em;}
+
+  /* speech bubbles over players */
+  .bubble{position:absolute; z-index:72; background:#fff; color:#16202a; font-size:12.5px; font-weight:800;
+    padding:6px 12px; border-radius:13px; box-shadow:0 8px 18px rgba(0,0,0,.45); white-space:nowrap;
+    opacity:0; transform:translate(var(--tx,-50%),var(--ty,-110%)) scale(.6);
+    transition:opacity .22s ease, transform .26s cubic-bezier(.2,1.4,.4,1); pointer-events:none; letter-spacing:.01em;}
+  .bubble.show{opacity:1; transform:translate(var(--tx,-50%),var(--ty,-110%)) scale(1);}
+  .bubble.bub-pass{background:#e9eef2; color:#6a7884;}
+  .bubble.bub-call{background:linear-gradient(180deg,#f4d885,#cf9f3f); color:#3a2a05;}
+  .bubble.bub-alone{background:linear-gradient(180deg,#ff8a8a,#d23b3b); color:#fff;}
+
+  #control-hint{font-size:12px; color:var(--muted); text-align:center; max-width:540px; line-height:1.45;
+    background:rgba(0,0,0,.5); padding:8px 14px; border-radius:11px; border:1px solid var(--line); backdrop-filter:blur(2px);}
+  #control-hint b{color:var(--txt);}
+  #control-hint .tip{color:var(--gold); font-weight:700;}
+
+  .help-body{font-size:13px; line-height:1.65; color:var(--txt);}
+  .help-body h3{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--gold); margin:18px 0 6px;}
+  .help-body p{margin:6px 0; color:var(--muted);}
+  .help-body b{color:var(--txt);}
+  .help-close-row{display:flex; justify-content:flex-end; margin-top:18px;}
+
+  /* trick slots */
+  .trick-slot{position:absolute; width:var(--cw); height:var(--ch); z-index:15; pointer-events:none;}
+  #ts-0{left:50%; top:calc(50% + var(--ch)*.55); transform:translate(-50%,-50%);}
+  #ts-2{left:50%; top:calc(50% - var(--ch)*.55); transform:translate(-50%,-50%);}
+  #ts-1{left:calc(50% - var(--cw)*1.05); top:50%; transform:translate(-50%,-50%);}
+  #ts-3{left:calc(50% + var(--cw)*1.05); top:50%; transform:translate(-50%,-50%);}
+
+  /* upcard / deck */
+  #deck-stack{position:absolute; left:calc(50% - var(--cw)*1.0); top:50%; transform:translate(-50%,-50%); z-index:12;}
+  #deck-stack .card{box-shadow:var(--shadow);}
+  #upcard-wrap{position:absolute; left:calc(50% + var(--cw)*0.15); top:50%; transform:translate(-50%,-50%); z-index:13;}
+
+  /* ---------- Sidebar widgets ---------- */
+  .brandbar{display:flex; align-items:center; gap:8px; padding-bottom:6px; border-bottom:1px solid var(--line);}
+  .brandbar .logo{font-size:18px;}
+  .brandbar h1{font-size:15px; margin:0; letter-spacing:.04em; font-weight:800;}
+  .brandbar small{color:var(--muted); font-size:10px; display:block; letter-spacing:.14em; text-transform:uppercase;}
+
+  .scorecard{background:linear-gradient(180deg,var(--panel2),#141b21); border:1px solid var(--line); border-radius:14px; padding:12px;}
+  .scorecard h2{font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); margin:0 0 10px;}
+  .scorerow{display:flex; align-items:center; justify-content:space-between; padding:8px 10px; border-radius:10px; margin-bottom:8px;}
+  .scorerow.you{background:rgba(57,217,138,.10); border:1px solid rgba(57,217,138,.28);}
+  .scorerow.opp{background:rgba(255,107,107,.08); border:1px solid rgba(255,107,107,.24);}
+  .scorerow .who{font-weight:700; font-size:13px;}
+  .scorerow .who small{display:block; color:var(--muted); font-weight:500; font-size:10px;}
+  .scorerow .pts{font-size:30px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1;}
+  .you .pts{color:var(--good);} .opp .pts{color:var(--bad);}
+  .scoretrack{display:flex; gap:4px; margin-top:6px; flex-wrap:wrap;}
+  .scoretrack i{width:8px;height:8px;border-radius:2px;background:rgba(255,255,255,.12);}
+  .you .scoretrack i.on{background:var(--good);}
+  .opp .scoretrack i.on{background:var(--bad);}
+
+  .infogrid{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .chip{background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:8px 10px;}
+  .chip .k{font-size:9px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted);}
+  .chip .v{font-size:15px; font-weight:700; margin-top:2px;}
+  .chip .v.suit-red{color:#ff6b6b;} .chip .v.suit-black{color:#cfe0ee;}
+
+  #status{font-size:13px; min-height:34px; background:rgba(255,255,255,.04); border:1px solid var(--line);
+    border-radius:10px; padding:8px 10px; line-height:1.3;}
+  #status b{color:var(--gold);}
+  #log{font-size:11px; color:var(--muted); flex:1; overflow:auto; border-top:1px solid var(--line); padding-top:8px; line-height:1.5; min-height:60px;}
+  #log .e{opacity:0; animation:fadein .3s forwards;}
+  @keyframes fadein{to{opacity:1;}}
+  .toolrow{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .toolrow button{width:100%; padding:9px 8px; font-size:12px;}
+  .toolrow button.green{background:linear-gradient(180deg,#3fd089,#1f9a5f); color:#04361f; border-color:#16834f;}
+
+  /* ---------- Buttons / controls ---------- */
+  button{
+    font:inherit; color:var(--txt); cursor:pointer; border:1px solid var(--line);
+    background:linear-gradient(180deg,#2a3742,#1a232b); border-radius:11px; padding:10px 14px;
+    font-weight:700; letter-spacing:.01em; transition:transform .08s, filter .15s, box-shadow .15s;
+    box-shadow:0 3px 0 rgba(0,0,0,.3);
+  }
+  button:hover{filter:brightness(1.12);}
+  button:active{transform:translateY(2px); box-shadow:0 1px 0 rgba(0,0,0,.3);}
+  button.gold{background:linear-gradient(180deg,#f0cf7a,#cf9f3f); color:#3a2a05; border-color:#a87f2a;}
+  button.green{background:linear-gradient(180deg,#3fd089,#1f9a5f); color:#04361f; border-color:#16834f;}
+  button.red{background:linear-gradient(180deg,#ff7b7b,#d23b3b); color:#3a0606; border-color:#a82a2a;}
+  button.ghost{background:rgba(255,255,255,.05);}
+  button:disabled{opacity:.4; cursor:not-allowed; filter:none;}
+
+  #controls{
+    position:absolute; left:50%; bottom: calc(var(--ch) * 1.25 + 30px); transform:translateX(-50%);
+    z-index:60; display:flex; flex-direction:column; align-items:center; gap:10px; width:min(92%, 560px);
+  }
+  #control-title{font-size:13px; color:var(--gold); font-weight:700; text-align:center; text-shadow:0 1px 4px #000;}
+  #control-buttons{display:flex; gap:10px; flex-wrap:wrap; justify-content:center;}
+  .alone-toggle{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted);
+    background:rgba(0,0,0,.45); padding:6px 12px; border-radius:20px; border:1px solid var(--line); cursor:pointer;}
+  .alone-toggle input{accent-color:var(--gold); width:16px;height:16px;}
+  .suit-btn{min-width:54px; font-size:18px;}
+  .suit-btn .red{color:#ff8080;}
+
+  /* ---------- Banner / toast ---------- */
+  #banner{
+    position:absolute; left:50%; top:42%; transform:translate(-50%,-50%) scale(.9);
+    z-index:80; text-align:center; pointer-events:none; opacity:0; transition:opacity .3s, transform .3s;
+  }
+  #banner.show{opacity:1; transform:translate(-50%,-50%) scale(1); }
+  #banner .big{font-size:clamp(28px,6vw,56px); font-weight:900; letter-spacing:.02em;
+    text-shadow:0 4px 18px rgba(0,0,0,.7); }
+  #banner .small{font-size:16px; color:var(--txt); margin-top:6px; text-shadow:0 2px 8px #000;}
+  .pop-good{color:var(--good);} .pop-bad{color:var(--bad);} .pop-gold{color:var(--gold);}
+
+  /* ---------- Overlays ---------- */
+  .overlay{position:absolute; inset:0; z-index:100; display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(900px 600px at 50% 30%, rgba(12,30,22,.85), rgba(4,8,10,.96));
+    backdrop-filter:blur(4px);}
+  .panel{
+    width:min(680px, 92vw); max-height:92vh; overflow:auto;
+    background:linear-gradient(180deg,#16202a,#0d1319); border:1px solid var(--line);
+    border-radius:20px; padding:26px 28px; box-shadow:var(--shadow);
+  }
+  .panel h1{margin:0 0 4px; font-size:30px; letter-spacing:.02em;}
+  .panel .tagline{color:var(--muted); margin:0 0 18px; font-size:13px; letter-spacing:.04em;}
+  .panel .logo-suits{font-size:26px; letter-spacing:.1em;}
+  .lg-red{color:#ff6b6b;} .lg-bk{color:#cfe0ee;}
+  .setup-section{margin:16px 0; }
+  .setup-section > .lab{font-size:11px; text-transform:uppercase; letter-spacing:.14em; color:var(--gold); margin-bottom:8px;}
+  .player-cfg{display:flex; align-items:center; justify-content:space-between; gap:12px;
+    background:var(--panel2); border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin-bottom:8px;}
+  .player-cfg .pinfo{display:flex; flex-direction:column;}
+  .player-cfg .pname{font-weight:700;}
+  .player-cfg .prole{font-size:11px; color:var(--muted);}
+  .seg{display:flex; gap:4px; background:#0c1116; border:1px solid var(--line); border-radius:10px; padding:4px;}
+  .seg button{padding:7px 12px; font-size:12px; box-shadow:none; border:none; background:transparent; border-radius:7px; color:var(--muted);}
+  .seg button.sel{background:linear-gradient(180deg,#f0cf7a,#cf9f3f); color:#3a2a05;}
+  .seg.diff-easy button.sel{background:linear-gradient(180deg,#7fe0a6,#3fae73); color:#053a22;}
+  .seg.diff-medium button.sel{background:linear-gradient(180deg,#f0cf7a,#cf9f3f); color:#3a2a05;}
+  .seg.diff-hard button.sel{background:linear-gradient(180deg,#ff8a8a,#d24b4b); color:#3a0606;}
+  .row-inline{display:flex; gap:16px; flex-wrap:wrap; align-items:center;}
+  .field{display:flex; flex-direction:column; gap:6px;}
+  .field label{font-size:11px; text-transform:uppercase; letter-spacing:.12em; color:var(--muted);}
+  select{font:inherit; color:var(--txt); background:#0c1116; border:1px solid var(--line); border-radius:10px; padding:9px 12px;}
+  .start-row{display:flex; gap:12px; margin-top:22px; align-items:center; flex-wrap:wrap;}
+  .rules-toggle{font-size:12px; color:var(--muted); cursor:pointer; text-decoration:underline dotted;}
+  .rules{font-size:12.5px; color:var(--muted); line-height:1.6; margin-top:14px; border-top:1px solid var(--line); padding-top:14px;}
+  .rules b{color:var(--txt);}
+  .winline{font-size:18px; margin:10px 0 0;}
+
+  @media (max-width:768px){
+    :root{ --cw: clamp(42px, 12.8vw, 60px); }
+    #app{ height:100dvh; }
+    #top-wrap{ flex-direction:column; }
+
+    /* compact HUD strip pinned to the top */
+    #sidebar{
+      order:-1; width:100%; flex:0 0 auto; flex-direction:row; flex-wrap:nowrap;
+      align-items:center; gap:6px; padding:6px 8px;
+      border-left:none; border-bottom:1px solid var(--line);
+      max-height:none; overflow-x:auto; overflow-y:hidden;
+    }
+    .brandbar{ display:none; }
+    #sidebar .scorecard{ flex:0 0 auto; padding:5px 8px; display:flex; align-items:center; gap:8px; }
+    .scorecard h2{ display:none; }
+    .scorerow{ margin:0; padding:3px 9px; flex-direction:column; align-items:center; gap:0; min-width:48px; }
+    .scorerow .who{ font-size:8px; letter-spacing:0; }
+    .scorerow .who small{ display:none; }
+    .scorerow .pts{ font-size:20px; }
+    .scoretrack{ display:none; }
+    .infogrid{ display:flex; gap:6px; flex:0 0 auto; grid-template-columns:none; }
+    .chip{ padding:4px 8px; }
+    .chip .k{ font-size:7px; }
+    .chip .v{ font-size:12px; }
+    #status{ display:none; }
+    #log{ display:none; }
+    .toolrow{ display:flex; flex:0 0 auto; gap:6px; grid-template-columns:none; }
+    .toolrow button{ width:auto; padding:7px 9px; font-size:11px; white-space:nowrap; }
+
+    /* table fills the rest of the screen */
+    #table{ inset:6px; border-radius:20px; }
+    #table::before{ font-size:30px; }
+    #table::after{ inset:10px; }
+
+    /* compact seats */
+    .seat-label{ min-width:0; padding:3px 7px; gap:2px; }
+    .seat-label .nm{ font-size:10px; } .seat-label .sub{ font-size:8px; }
+    .seat-label .teamtag{ font-size:7px; padding:1px 4px; }
+    .seat-label .pips{ height:7px; } .seat-label .pips i{ width:7px; height:7px; }
+    .lbl-1{ left:4px; top:calc(50% - 58px); transform:none; }
+    .lbl-3{ right:4px; top:calc(50% - 58px); transform:none; }
+    .lbl-1.active{ transform:scale(1.04); } .lbl-3.active{ transform:scale(1.04); }
+    /* move your label into the corner so it doesn't sit on your hand */
+    .lbl-0{ left:6px; bottom:6px; transform:none; }
+    .lbl-0.active{ transform:scale(1.04); }
+    .lbl-2{ top:6px; }
+
+    /* hands kept inside the felt */
+    #hand-0{ bottom: calc(var(--ch)*.02 + 6px); }
+    #hand-2{ top: 42px; }
+    #hand-1{ left:26px; top:50%; }
+    #hand-3{ right:auto; left:calc(100% - 92px); top:50%; }
+
+    /* bidding controls become a panel just above your hand */
+    #controls{ bottom: calc(var(--ch) + 16px); width:94%; gap:6px;
+      background:rgba(6,14,10,.62); border:1px solid var(--line); border-radius:14px; padding:8px;
+      -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); }
+    #control-title{ font-size:12px; }
+    #control-hint{ font-size:11px; padding:6px 9px; max-width:90vw; }
+    #control-buttons{ gap:7px; }
+    #control-buttons button{ padding:8px 11px; font-size:13px; }
+    .suit-btn{ min-width:44px; font-size:16px; }
+    .alone-toggle{ font-size:11px; padding:5px 10px; }
+
+    #banner .big{ font-size:28px; } #banner .small{ font-size:13px; }
+    .overlay{ align-items:flex-start; padding:10px; overflow:auto; }
+    .panel{ padding:18px 16px; max-height:none; }
+    .panel h1{ font-size:24px; }
+    .player-cfg{ padding:8px 10px; }
+    .seg button{ padding:6px 9px; font-size:11px; }
+
+    /* clearer tap targets: playable cards glow, illegal dim (no hover on touch) */
+    .card.playable .face{ box-shadow: var(--shadow), inset 0 0 0 1px rgba(0,0,0,.12), 0 0 0 2px rgba(57,217,138,.55); }
+  }
+  @media (max-width:768px) and (orientation:landscape){
+    /* short height in landscape: shrink cards and HUD so the table still fits */
+    :root{ --cw: clamp(38px, 7.2vw, 56px); }
+    #hand-2{ top: 36px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top-wrap">
+    <div id="table-wrap">
+      <div id="table">
+        <div class="seat-label lbl-0 team-you" id="lbl-0"><span class="teamtag">YOU</span><span class="nm">You (South)</span><span class="sub" id="sub-0">human</span><span class="pips" id="pips-0"></span></div>
+        <div class="seat-label lbl-1 team-opp" id="lbl-1"><span class="teamtag">OPP</span><span class="nm" id="nm-1">West</span><span class="sub" id="sub-1"></span><span class="pips" id="pips-1"></span></div>
+        <div class="seat-label lbl-2 team-you" id="lbl-2"><span class="teamtag">PARTNER</span><span class="nm" id="nm-2">North</span><span class="sub" id="sub-2"></span><span class="pips" id="pips-2"></span></div>
+        <div class="seat-label lbl-3 team-opp" id="lbl-3"><span class="teamtag">OPP</span><span class="nm" id="nm-3">East</span><span class="sub" id="sub-3"></span><span class="pips" id="pips-3"></span></div>
+
+        <div class="dealer-chip hidden" id="dealer-chip">D</div>
+
+        <div class="hand" id="hand-0"></div>
+        <div class="hand" id="hand-1"></div>
+        <div class="hand" id="hand-2"></div>
+        <div class="hand" id="hand-3"></div>
+
+        <div class="trick-slot" id="ts-0"></div>
+        <div class="trick-slot" id="ts-1"></div>
+        <div class="trick-slot" id="ts-2"></div>
+        <div class="trick-slot" id="ts-3"></div>
+
+        <div id="deck-stack"></div>
+        <div id="upcard-wrap"></div>
+
+        <div id="controls" class="hidden">
+          <div id="control-title"></div>
+          <div id="control-hint" class="hidden"></div>
+          <div id="control-buttons"></div>
+        </div>
+
+        <div id="banner"><div class="big" id="banner-big"></div><div class="small" id="banner-small"></div></div>
+      </div>
+    </div>
+
+    <aside id="sidebar">
+      <div class="brandbar">
+        <span class="logo">🂡</span>
+        <div><h1>Felt &amp; Bower</h1><small>Bid Euchre</small></div>
+      </div>
+
+      <div class="scorecard">
+        <h2>Scorecard · First to <span id="target-disp">32</span></h2>
+        <div class="scorerow you">
+          <div class="who">Your Team<small id="you-members">You &amp; North</small></div>
+          <div style="text-align:right"><div class="pts" id="score-you">0</div><div class="scoretrack" id="track-you"></div></div>
+        </div>
+        <div class="scorerow opp">
+          <div class="who">Opponents<small id="opp-members">West &amp; East</small></div>
+          <div style="text-align:right"><div class="pts" id="score-opp">0</div><div class="scoretrack" id="track-opp"></div></div>
+        </div>
+      </div>
+
+      <div class="infogrid">
+        <div class="chip"><div class="k">Bid</div><div class="v" id="info-bid">—</div></div>
+        <div class="chip"><div class="k">Trump</div><div class="v" id="info-trump">—</div></div>
+        <div class="chip"><div class="k">Declarer</div><div class="v" id="info-maker">—</div></div>
+        <div class="chip"><div class="k">Tricks (You–Opp)</div><div class="v" id="info-tricks">0 – 0</div></div>
+      </div>
+
+      <div id="status">Welcome.</div>
+      <div id="log"></div>
+      <div class="toolrow">
+        <button class="ghost" id="btn-hints">💡 Hints: Off</button>
+        <button class="ghost" id="btn-help">❔ How to play</button>
+        <button class="ghost" id="btn-sound">🔊 Sound</button>
+        <button class="ghost" id="btn-menu">Menu</button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Setup overlay -->
+  <div class="overlay" id="setup">
+    <div class="panel">
+      <div class="logo-suits"><span class="lg-bk">♠</span> <span class="lg-red">♥</span> <span class="lg-red">♦</span> <span class="lg-bk">♣</span></div>
+      <h1>Bid Euchre</h1>
+      <p class="tagline">Single-deck Bid Euchre · bid your tricks, name trump, shoot the moon · you &amp; North vs. West &amp; East</p>
+
+      <div class="setup-section">
+        <div class="lab">Set each computer player's skill</div>
+        <div class="player-cfg" data-seat="1">
+          <div class="pinfo"><span class="pname">West</span><span class="prole">Opponent · left of you</span></div>
+          <div class="seg" data-seat="1"></div>
+        </div>
+        <div class="player-cfg" data-seat="2">
+          <div class="pinfo"><span class="pname">North</span><span class="prole">Your partner · plays for your team</span></div>
+          <div class="seg" data-seat="2"></div>
+        </div>
+        <div class="player-cfg" data-seat="3">
+          <div class="pinfo"><span class="pname">East</span><span class="prole">Opponent · right of you</span></div>
+          <div class="seg" data-seat="3"></div>
+        </div>
+      </div>
+
+      <div class="setup-section row-inline">
+        <div class="field">
+          <label>Game to</label>
+          <select id="target-select">
+            <option value="21">21 points (quick)</option>
+            <option value="32" selected>32 points (standard)</option>
+            <option value="52">52 points (long)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Stick the dealer</label>
+          <select id="stick-select">
+            <option value="on" selected>On (dealer must bid)</option>
+            <option value="off">Off (redeal if all pass)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Scoring</label>
+          <select id="score-select">
+            <option value="tricks" selected>Score tricks you win</option>
+            <option value="bidder">Only the bidder scores</option>
+            <option value="bid">Score the bid amount</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>No-trump bids</label>
+          <select id="nt-select">
+            <option value="off" selected>Trump only</option>
+            <option value="on">Allow no-trump</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="start-row">
+        <button class="gold" id="btn-start" style="font-size:16px; padding:13px 26px;">Deal the cards ▸</button>
+        <span class="rules-toggle" id="rules-toggle">How to play / rules</span>
+      </div>
+
+      <div class="rules hidden" id="rules-text">
+        <b>Goal.</b> First team to the target score wins. Each hand, one team "makes the bid."<br>
+        <b>Deck.</b> 24 cards: 9, 10, J, Q, K, A in four suits. Everyone gets 6 cards — there are 6 tricks.<br>
+        <b>Bidding.</b> Going once around from the dealer's left, each player either passes or bids how many of the 6 tricks their team will take (minimum 3). Each bid must beat the last. Highest bidder names trump.<br>
+        <b>Stick the dealer.</b> If everyone else passes, the dealer must bid (no free pass).<br>
+        <b>Bowers.</b> The Jack of trump is the <b>Right Bower</b> (highest); the other Jack of the same color is the <b>Left Bower</b> (second highest) and counts as a trump.<br>
+        <b>The Moon.</b> Bidding the <b>Moon</b> means taking all 6 tricks alone (your partner sits out). With a <b>slide</b>, your partner first passes you their best card and you discard one. A no-help moon is worth more.<br>
+        <b>Scoring.</b> Make your bid and score (the default) the tricks you take; come up short and you're <i>euchred</i> — you lose the number you bid. Moon made/missed is a big swing.
+      </div>
+    </div>
+  </div>
+
+  <!-- Help overlay -->
+  <div class="overlay hidden" id="help">
+    <div class="panel">
+      <div class="logo-suits"><span class="lg-bk">♠</span> <span class="lg-red">♥</span> <span class="lg-red">♦</span> <span class="lg-bk">♣</span></div>
+      <h1>How to play Bid Euchre</h1>
+      <p class="tagline">Single deck · 6 cards each · 6 tricks · you (South) &amp; North vs. West &amp; East.</p>
+      <div class="help-body">
+        <h3>The goal</h3>
+        <p>Win tricks to score points. First team to <b id="help-target">32</b> points takes the match.</p>
+
+        <h3>1 · Bidding</h3>
+        <p>After the deal, going once around starting left of the dealer, each player either <b>passes</b> or <b>bids a number of tricks</b> (3 to 6) that their team promises to win. Each new bid must be higher than the last, and the highest bidder becomes the <b>declarer</b> and names trump.</p>
+        <p><b>Stick the dealer:</b> if everyone before the dealer passes, the dealer is forced to bid — no free redeal.</p>
+
+        <h3>2 · The Bowers</h3>
+        <p>The <b>Jack of the trump suit</b> is the <b>Right Bower</b> — the highest card. The <b>other Jack of the same color</b> is the <b>Left Bower</b> — second highest, and it plays as a trump (not its printed suit). Trump order high→low: Right Bower, Left Bower, A, K, Q, 10, 9.</p>
+
+        <h3>3 · Shooting the Moon</h3>
+        <p>The biggest bid is the <b>Moon</b> — you promise to win <b>all 6 tricks by yourself</b> while your partner sits out. <b>Moon with a slide:</b> your partner first passes you their single best card and you discard one, then play alone. A <b>no-help moon</b> (no slide) is harder and worth more.</p>
+
+        <h3>4 · Playing a trick</h3>
+        <p>The declarer leads first. Everyone must <b>follow the led suit if they can</b> (the Left Bower counts as trump). Highest trump wins; with no trump played, the highest card of the led suit wins. The winner leads next.</p>
+
+        <h3>5 · Scoring</h3>
+        <p>You chose the style in setup. By default each team <b>scores the tricks it wins</b>; if the declaring team falls short of its bid it's <b>euchred</b> and loses the number it bid instead. A made moon is a big bonus; a failed moon is a big penalty.</p>
+
+        <h3>Reading the table</h3>
+        <p>The glowing name tag shows whose turn it is. Bubbles show each player's bid (<b>Pass</b> / <b>Bid 4</b> / <b>Moon!</b>). The gold <b>D</b> chip marks the dealer; dots under each name are tricks won this hand. Turn on <b>💡 Hints</b> for a suggested bid, trump, and card.</p>
+      </div>
+      <div class="help-close-row">
+        <button class="gold" id="btn-help-close">Got it ▸</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game over overlay -->
+  <div class="overlay hidden" id="gameover">
+    <div class="panel" style="text-align:center;">
+      <div class="logo-suits" id="go-suits">♠ ♥ ♦ ♣</div>
+      <h1 id="go-title">Game Over</h1>
+      <p class="winline" id="go-line"></p>
+      <p class="tagline" id="go-score"></p>
+      <div class="start-row" style="justify-content:center;">
+        <button class="gold" id="btn-rematch" style="font-size:16px;padding:13px 26px;">Rematch ▸</button>
+        <button class="ghost" id="btn-newsetup">Change players</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+"use strict";
+/* ============================================================
+   FELT & BOWER — BID EUCHRE (single deck, 6 tricks)
+   Verified engine + heuristic AI + animated UI.
+   ============================================================ */
+
+const SUITS=['spades','hearts','diamonds','clubs'];
+const SUIT_SYM={spades:'♠',hearts:'♥',diamonds:'♦',clubs:'♣'};
+const SUIT_COLOR={spades:'black',hearts:'red',diamonds:'red',clubs:'black'};
+const SAME_COLOR={spades:'clubs',clubs:'spades',hearts:'diamonds',diamonds:'hearts'};
+const RANKS=['9','10','J','Q','K','A'];
+const RANK_VAL={'9':0,'10':1,'J':2,'Q':3,'K':4,'A':5};
+const SEAT_NAME=['You','West','North','East'];
+const MOON_SLIDE=12, MOON_ALONE=18;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const rnd=a=>a[Math.floor(Math.random()*a.length)];
+const cardId=c=>c.rank+c.suit[0];
+
+function effSuit(card,trump){
+  if(trump==='notrump'||!trump) return card.suit;
+  if(card.rank==='J'&&card.suit===SAME_COLOR[trump]) return trump;
+  return card.suit;
+}
+const isTrump=(card,trump)=> trump!=='notrump' && effSuit(card,trump)===trump;
+function trumpRank(card,trump){
+  if(card.rank==='J'&&card.suit===trump) return 7;
+  if(card.rank==='J'&&card.suit===SAME_COLOR[trump]) return 6;
+  return {'A':5,'K':4,'Q':3,'10':2,'9':1}[card.rank];
+}
+function strength(card,trump,ledSuit){
+  if(isTrump(card,trump)) return 200+trumpRank(card,trump);
+  if(card.suit===ledSuit) return 100+RANK_VAL[card.rank];
+  return RANK_VAL[card.rank];
+}
+function buildDeck(){const d=[];for(const s of SUITS)for(const r of RANKS)d.push({rank:r,suit:s});return d;}
+function shuffle(d){for(let i=d.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[d[i],d[j]]=[d[j],d[i]];}return d;}
+function legalCards(hand,ledSuit,trump){
+  if(ledSuit==null) return hand.slice();
+  const f=hand.filter(c=>effSuit(c,trump)===ledSuit);
+  return f.length?f:hand.slice();
+}
+function trickWinner(plays,trump){
+  const ledSuit=effSuit(plays[0].card,trump);
+  let best=plays[0];
+  for(const p of plays) if(strength(p.card,trump,ledSuit)>strength(best.card,trump,ledSuit)) best=p;
+  return best.seat;
+}
+function estimateTricks(hand,trump){
+  if(trump==='notrump'){
+    const bySuit={spades:[],hearts:[],diamonds:[],clubs:[]};
+    hand.forEach(c=>bySuit[c.suit].push(c));
+    let t=0;
+    for(const s of SUITS){
+      const cs=bySuit[s].sort((a,b)=>RANK_VAL[b.rank]-RANK_VAL[a.rank]);
+      cs.forEach(c=>{ if(c.rank==='A') t+=0.85; else if(c.rank==='K') t+=(cs.length>=2?0.5:0.3); else if(c.rank==='Q'&&cs.length>=3) t+=0.25; });
+      if(cs.length>3) t+=(cs.length-3)*0.3;
+    }
+    return Math.min(6,t);
+  }
+  let t=0,tc=0; const suitCount={spades:0,hearts:0,diamonds:0,clubs:0};
+  for(const c of hand){
+    if(isTrump(c,trump)){ tc++;
+      if(c.rank==='J'&&c.suit===trump) t+=1.0; else if(c.rank==='J') t+=0.85;
+      else if(c.rank==='A') t+=0.75; else if(c.rank==='K') t+=0.55; else if(c.rank==='Q') t+=0.4;
+      else if(c.rank==='10') t+=0.3; else t+=0.22;
+    } else { suitCount[c.suit]++; if(c.rank==='A') t+=0.7; else if(c.rank==='K') t+=0.22; }
+  }
+  if(tc>=2){ for(const s of SUITS){ if(s!==trump && suitCount[s]===0) t+=0.5; } }
+  return Math.min(6,t);
+}
+const SKILL={
+  easy:  {adj:1.1, noise:1.3, sloppy:0.45, moon:99},
+  medium:{adj:0.5, noise:0.5, sloppy:0.10, moon:5.85},
+  hard:  {adj:0.25,noise:0.2, sloppy:0.0,  moon:5.7},
+};
+function bidValue(b){
+  if(!b||b.type==='pass') return 0;
+  if(b.type==='moon-alone') return 80;
+  if(b.type==='moon-slide') return 70;
+  return b.tricks*10 + (b.trump==='notrump'?5:0);
+}
+function aiBid(hand,skill,currentHigh,allowNT,mustBid){
+  const cfg=SKILL[skill];
+  const cands = allowNT? SUITS.concat(['notrump']) : SUITS.slice();
+  let best={trump:cands[0],est:-1};
+  for(const tr of cands){ const e=estimateTricks(hand,tr); if(e>best.est) best={trump:tr,est:e}; }
+  let target=Math.round(best.est - cfg.adj + (Math.random()-0.5)*cfg.noise);
+  target=Math.max(0,Math.min(6,target));
+  if(best.est>=cfg.moon && best.trump!=='notrump'){
+    const mb = best.est>=6.25 ? {type:'moon-alone',tricks:6,trump:best.trump} : {type:'moon-slide',tricks:6,trump:best.trump};
+    if(bidValue(mb)>currentHigh) return mb;
+  }
+  if(target>=3){
+    const b={type:'number',tricks:target,trump:best.trump};
+    if(bidValue(b)>currentHigh) return b;
+    for(let n=Math.max(3,target);n<=6;n++){ const bb={type:'number',tricks:n,trump:best.trump}; if(bidValue(bb)>currentHigh && best.est>=n-0.6) return bb; }
+  }
+  if(mustBid){
+    const minN=Math.max(3, Math.floor(currentHigh/10)+1);
+    if(minN<=6) return {type:'number',tricks:minN,trump:best.trump};
+    if(currentHigh<70) return {type:'moon-slide',tricks:6,trump:best.trump};
+    return {type:'moon-alone',tricks:6,trump:best.trump};
+  }
+  return {type:'pass'};
+}
+function cheapest(cards,trump,ledSuit){return cards.slice().sort((a,b)=>strength(a,trump,ledSuit)-strength(b,trump,ledSuit))[0];}
+function dumpLow(cards,trump){
+  return cards.slice().sort((a,b)=>{
+    const at=isTrump(a,trump)?1:0,bt=isTrump(b,trump)?1:0; if(at!==bt) return at-bt;
+    const av=isTrump(a,trump)?trumpRank(a,trump):RANK_VAL[a.rank];
+    const bv=isTrump(b,trump)?trumpRank(b,trump):RANK_VAL[b.rank];
+    return av-bv;
+  })[0];
+}
+function aiLead(seat,legal,skill){
+  const trump=G.trump; const isBidTeam=(seat%2)===(G.declarer%2);
+  const trumps=legal.filter(c=>isTrump(c,trump)).sort((a,b)=>trumpRank(b,trump)-trumpRank(a,trump));
+  const aces=legal.filter(c=>!isTrump(c,trump)&&c.rank==='A');
+  if(skill==='easy') return rnd(legal);
+  if(isBidTeam){
+    if(trumps.length&&trump!=='notrump'&&(trumpRank(trumps[0],trump)>=6||(skill==='hard'&&trumps.length>=2))) return trumps[0];
+    if(aces.length) return aces[0];
+    if(trumps.length) return trumps[0];
+  } else {
+    if(aces.length) return aces[0];
+    const offs=legal.filter(c=>!isTrump(c,trump)).sort((a,b)=>strength(a,trump,a.suit)-strength(b,trump,b.suit));
+    if(offs.length) return offs[0];
+    return trumps[trumps.length-1];
+  }
+  return dumpLow(legal,trump);
+}
+function activeAfter(seat){const o=G.trickOrder,i=o.indexOf(seat);return o.length-1-i;}
+function aiPlay(seat){
+  const hand=G.players[seat].hand,trump=G.trump,trick=G.trick,skill=G.players[seat].skill,cfg=SKILL[skill];
+  const ledSuit=trick.length?effSuit(trick[0].card,trump):null;
+  const legal=legalCards(hand,ledSuit,trump);
+  if(legal.length===1) return legal[0];
+  if(Math.random()<cfg.sloppy) return rnd(legal);
+  if(trick.length===0) return aiLead(seat,legal,skill);
+  const partner=(seat+2)%4;
+  let best=trick[0]; for(const p of trick) if(strength(p.card,trump,ledSuit)>strength(best.card,trump,ledSuit)) best=p;
+  const partnerWinning = best.seat===partner && !G.players[partner].sitting;
+  const winning=legal.filter(c=>strength(c,trump,ledSuit)>strength(best.card,trump,ledSuit));
+  if(partnerWinning) return dumpLow(legal,trump);
+  if(winning.length) return cheapest(winning,trump,ledSuit);
+  return dumpLow(legal,trump);
+}
+function discardChoice(hand,trump){let w=0,wv=Infinity;hand.forEach((c,i)=>{const v=isTrump(c,trump)?100+trumpRank(c,trump):RANK_VAL[c.rank];if(v<wv){wv=v;w=i;}});return w;}
+function bestCardIdx(hand,trump){let b=0,bv=-1;hand.forEach((c,i)=>{const v=isTrump(c,trump)?100+trumpRank(c,trump):RANK_VAL[c.rank];if(v>bv){bv=v;b=i;}});return b;}
+
+/* ============================================================ STATE ============ */
+const G={
+  players:[
+    {seat:0,name:'You',  skill:'human', team:0,hand:[],tricks:0,sitting:false},
+    {seat:1,name:'West', skill:'medium',team:1,hand:[],tricks:0,sitting:false},
+    {seat:2,name:'North',skill:'medium',team:0,hand:[],tricks:0,sitting:false},
+    {seat:3,name:'East', skill:'medium',team:1,hand:[],tricks:0,sitting:false},
+  ],
+  dealer:0,target:32,stick:true,allowNT:false,scoringStyle:'tricks',
+  scores:[0,0],handNo:0,
+  trump:null,declarer:null,bid:null,
+  trick:[],trickOrder:[],cardEls:{},sound:true,
+  hints:false,_refresh:null,_bidBase:null,_bidHintFn:null,
+  slideResolver:null,discardResolver:null,
+};
+const $=id=>document.getElementById(id);
+const handEls=[$('hand-0'),$('hand-1'),$('hand-2'),$('hand-3')];
+const trickSlots=[$('ts-0'),$('ts-1'),$('ts-2'),$('ts-3')];
+let resolveHuman=null;
+function waitHuman(){ return new Promise(r=>{resolveHuman=r;}); }
+function answerHuman(v){ if(resolveHuman){const r=resolveHuman; resolveHuman=null; r(v);} }
+function cap(s){return s[0].toUpperCase()+s.slice(1);}
+
+/* ---------- Sound ---------- */
+let actx=null;
+function beep(freq=440,dur=0.07,type='sine',vol=0.05){ if(!G.sound) return;
+  try{ actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+    const o=actx.createOscillator(),g=actx.createGain(); o.type=type;o.frequency.value=freq;o.connect(g);g.connect(actx.destination);
+    g.gain.setValueAtTime(vol,actx.currentTime); g.gain.exponentialRampToValueAtTime(0.0001,actx.currentTime+dur);
+    o.start(); o.stop(actx.currentTime+dur);
+  }catch(e){}
+}
+const sndDeal=()=>beep(320+Math.random()*60,0.05,'triangle',0.04);
+const sndPlay=()=>beep(520,0.06,'sine',0.05);
+const sndWin =()=>{beep(660,0.09,'sine',0.06);setTimeout(()=>beep(880,0.12,'sine',0.06),90);};
+const sndPoint=()=>{beep(523,0.1,'sine',0.06);setTimeout(()=>beep(784,0.16,'sine',0.06),110);};
+const sndBad=()=>beep(160,0.18,'sawtooth',0.05);
+
+/* ---------- Card elements ---------- */
+function makeCardEl(card,faceUp){
+  const el=document.createElement('div'); el.className='card'+(faceUp?'':' down');
+  el.dataset.id=cardId(card); el.dataset.suit=card.suit; el.dataset.rank=card.rank;
+  const inner=document.createElement('div'); inner.className='card-inner';
+  inner.appendChild(faceContent(card));
+  const back=document.createElement('div'); back.className='back'; inner.appendChild(back);
+  el.appendChild(inner); return el;
+}
+function faceContent(card){
+  const face=document.createElement('div'); face.className='face';
+  const col=SUIT_COLOR[card.suit],sym=SUIT_SYM[card.suit];
+  const top=document.createElement('div'); top.className='corner '+col; top.innerHTML=`<span class="r">${card.rank}</span><span class="s">${sym}</span>`;
+  const mid=document.createElement('div');
+  if(['J','Q','K'].includes(card.rank)){ mid.className='court '+col; mid.textContent=card.rank; }
+  else { mid.className='pip '+col; mid.textContent=sym; }
+  const bot=document.createElement('div'); bot.className='corner br '+col; bot.innerHTML=`<span class="r">${card.rank}</span><span class="s">${sym}</span>`;
+  face.appendChild(top); face.appendChild(mid); face.appendChild(bot); return face;
+}
+function layoutHand(seat){
+  const el=handEls[seat]; const cards=[...el.querySelectorAll('.card')]; const n=cards.length;
+  const MOB=window.innerWidth<=768;
+  cards.forEach((c,i)=>{
+    const mid=(n-1)/2; const off=i-mid; let tf,hover='';
+    if(seat===0){
+      const cap2=MOB?40:50, factor=MOB?0.6:0.58, lift=MOB?5:7;
+      const spread=Math.min(cap2,(window.innerWidth*factor)/Math.max(n,1));
+      tf=`translateX(${off*spread}px) translateY(${Math.abs(off)*lift}px) rotate(${off*4.5}deg)`; hover=tf;
+    } else if(seat===2){ tf=`translateX(${off*(MOB?12:20)}px) rotate(${off*3.5}deg)`; }
+    else { tf=`translateX(${off*(MOB?7:18)}px) rotate(${off*2.5}deg)`; }
+    c.style.setProperty('--hover',hover||tf); c.style.transform=tf; c.style.zIndex=i+1;
+  });
+  if(seat===0) el.style.width='0';
+}
+function renderHand(seat,animateDeal){
+  const el=handEls[seat]; el.innerHTML=''; const p=G.players[seat]; G.cardEls[seat]={};
+  p.hand.forEach((card,i)=>{
+    const ce=makeCardEl(card, seat===0);
+    if(animateDeal) ce.style.animation=`dealIn .01s ${i*0.04}s both`;
+    el.appendChild(ce); G.cardEls[seat][cardId(card)]=ce;
+    if(seat===0) ce.addEventListener('click',()=>onHumanCardClick(card,ce));
+  });
+  layoutHand(seat);
+}
+
+/* ---------- HUD / status ---------- */
+function setStatus(html){ $('status').innerHTML=html; }
+function log(msg){ const l=$('log'); const e=document.createElement('div'); e.className='e'; e.innerHTML=msg; l.prepend(e); while(l.children.length>40) l.removeChild(l.lastChild); }
+function bidText(){
+  if(!G.bid) return '—';
+  if(G.bid.type==='moon-alone') return 'Moon ★';
+  if(G.bid.type==='moon-slide') return 'Moon';
+  let s=''+G.bid.tricks;
+  if(G.trump) s+=' '+(G.trump==='notrump'?'NT':SUIT_SYM[G.trump]);
+  return s;
+}
+function updateScoreboard(){
+  $('score-you').textContent=G.scores[0]; $('score-opp').textContent=G.scores[1];
+  $('target-disp').textContent=G.target;
+  renderTrack('track-you',G.scores[0]); renderTrack('track-opp',G.scores[1]);
+  $('info-tricks').textContent=`${G.players[0].tricks+G.players[2].tricks} – ${G.players[1].tricks+G.players[3].tricks}`;
+  $('info-bid').textContent=bidText();
+  if(G.trump && G.trump!=='notrump'){ const v=$('info-trump'); v.textContent=SUIT_SYM[G.trump]+' '+cap(G.trump); v.className='v '+(SUIT_COLOR[G.trump]==='red'?'suit-red':'suit-black'); }
+  else if(G.trump==='notrump'){ $('info-trump').textContent='No-trump'; $('info-trump').className='v'; }
+  else { $('info-trump').textContent='—'; $('info-trump').className='v'; }
+  $('info-maker').textContent = G.declarer!=null ? SEAT_NAME[G.declarer]+(G.bid&&G.bid.type&&G.bid.type.indexOf('moon')===0?' (alone)':'') : '—';
+}
+function renderTrack(id,score){ const t=$(id); t.innerHTML=''; const cells=Math.max(G.target,score); for(let i=0;i<cells;i++){const c=document.createElement('i'); if(i<score)c.classList.add('on'); t.appendChild(c);} }
+function updatePips(){ for(let s=0;s<4;s++){ const pip=$('pips-'+s); pip.innerHTML=''; for(let i=0;i<G.players[s].tricks;i++){const d=document.createElement('i'); d.className='on'; pip.appendChild(d);} } }
+function setActiveSeat(seat){ for(let s=0;s<4;s++) $('lbl-'+s).classList.toggle('active', s===seat); }
+function clearActive(){ for(let s=0;s<4;s++) $('lbl-'+s).classList.remove('active'); }
+function positionDealerChip(){
+  const chip=$('dealer-chip'); chip.classList.remove('hidden');
+  const lbl=$('lbl-'+G.dealer),table=$('table'); const lr=lbl.getBoundingClientRect(),tr=table.getBoundingClientRect();
+  let x=lr.left-tr.left+lr.width/2-15,y=lr.top-tr.top-34;
+  if(G.dealer===2) y=lr.top-tr.top+lr.height+4;
+  if(G.dealer===1){ x=lr.left-tr.left+lr.width+4; y=lr.top-tr.top+lr.height/2-15; }
+  if(G.dealer===3){ x=lr.left-tr.left-34; y=lr.top-tr.top+lr.height/2-15; }
+  chip.style.left=x+'px'; chip.style.top=y+'px';
+}
+function speak(seat,text,cls){
+  const table=$('table'),lbl=$('lbl-'+seat);
+  const b=document.createElement('div'); b.className='bubble '+(cls||''); b.textContent=text; table.appendChild(b);
+  const lr=lbl.getBoundingClientRect(),tr=table.getBoundingClientRect();
+  let x=lr.left-tr.left+lr.width/2,y=lr.top-tr.top,tx='-50%',ty='-115%';
+  if(seat===2){ y=lr.top-tr.top+lr.height; ty='15%'; }
+  else if(seat===1){ x=lr.left-tr.left+lr.width; y=lr.top-tr.top+lr.height/2; tx='6%'; ty='-50%'; }
+  else if(seat===3){ x=lr.left-tr.left; y=lr.top-tr.top+lr.height/2; tx='-106%'; ty='-50%'; }
+  b.style.left=x+'px'; b.style.top=y+'px'; b.style.setProperty('--tx',tx); b.style.setProperty('--ty',ty);
+  requestAnimationFrame(()=>b.classList.add('show'));
+  setTimeout(()=>{ b.classList.remove('show'); setTimeout(()=>b.remove(),320); },1150);
+}
+function setControlHint(){
+  const el=$('control-hint');
+  if(!G._bidBase){ el.classList.add('hidden'); el.innerHTML=''; return; }
+  let html=G._bidBase;
+  if(G.hints && G._bidHintFn) html+=` <span class="tip">💡 ${G._bidHintFn()}</span>`;
+  el.innerHTML=html; el.classList.remove('hidden');
+}
+
+/* ---------- animations ---------- */
+function flyToSlot(cardEl,slot){
+  const first=cardEl.getBoundingClientRect();
+  cardEl.classList.remove('down'); cardEl.classList.add('in-trick'); cardEl.style.animation='';
+  slot.appendChild(cardEl); const rot=(Math.random()*10-5); cardEl.style.transform='none';
+  const last=cardEl.getBoundingClientRect(); const dx=first.left-last.left,dy=first.top-last.top;
+  cardEl.style.transition='none'; cardEl.style.transform=`translate(${dx}px,${dy}px) rotate(0deg)`; cardEl.getBoundingClientRect();
+  requestAnimationFrame(()=>{ cardEl.style.transition='transform .42s cubic-bezier(.2,.8,.2,1)'; cardEl.style.transform=`translate(0,0) rotate(${rot}deg)`; });
+}
+async function collectTrick(winnerSeat){
+  const dir={0:[0,1],1:[-1,0],2:[0,-1],3:[1,0]}[winnerSeat]; const cards=[];
+  trickSlots.forEach(s=>s.querySelectorAll('.card').forEach(c=>cards.push(c)));
+  const winEl=trickSlots[winnerSeat].querySelector('.card'); if(winEl) winEl.classList.add('win-flash');
+  await sleep(420);
+  cards.forEach(c=>{ c.style.transition='transform .4s ease-in, opacity .4s'; c.style.transform=`translate(${dir[0]*220}px,${dir[1]*200}px) rotate(${dir[0]*40}deg)`; c.style.opacity='0'; });
+  await sleep(380); trickSlots.forEach(s=>s.innerHTML='');
+}
+async function banner(big,small,cls,hold=1500){
+  $('banner-big').textContent=big; $('banner-big').className='big '+(cls||''); $('banner-small').textContent=small||'';
+  $('banner').classList.add('show'); await sleep(hold); $('banner').classList.remove('show'); await sleep(280);
+}
+
+/* ============================================================ GAME FLOW ======== */
+function startGame(){
+  G.scores=[0,0]; G.handNo=0; G.dealer=Math.floor(Math.random()*4);
+  for(const p of G.players) p.tricks=0;
+  $('you-members').textContent='You & North'; $('opp-members').textContent='West & East';
+  for(let s=1;s<4;s++){ $('nm-'+s).textContent=SEAT_NAME[s]; $('sub-'+s).textContent=G.players[s].skill; }
+  $('sub-0').textContent='human';
+  updateScoreboard(); log('<b>New game</b> to '+G.target+' points. Scoring: '+G.scoringStyle+(G.allowNT?', no-trump on':'')+'.');
+  nextHand();
+}
+async function nextHand(){
+  G.handNo++; G.trump=null; G.declarer=null; G.bid=null; G.trick=[];
+  for(const p of G.players){ p.hand=[]; p.tricks=0; p.sitting=false; }
+  for(let s=0;s<4;s++){ handEls[s].innerHTML=''; handEls[s].style.opacity='1'; $('lbl-'+s).classList.remove('sitting'); }
+  trickSlots.forEach(s=>s.innerHTML=''); $('upcard-wrap').innerHTML='';
+  updatePips(); updateScoreboard(); clearActive(); positionDealerChip();
+
+  const deck=shuffle(buildDeck());
+  for(let s=0;s<4;s++) G.players[s].hand=deck.slice(s*6,s*6+6);
+  await dealAnimation();
+  sortHand(0); renderHand(0,false);
+
+  setStatus(`Hand ${G.handNo}. <b>${SEAT_NAME[G.dealer]}</b> deals. Bidding begins.`);
+  log(`Hand ${G.handNo}: ${SEAT_NAME[G.dealer]} deals.`);
+  await sleep(350);
+
+  const ok=await biddingPhase();
+  if(ok==='redeal'){ await banner('All passed','Redealing','pop-gold',1200); G.dealer=(G.dealer+1)%4; return nextHand(); }
+  await setupContract();
+  await playTricks();
+}
+function sortHand(seat){
+  G.players[seat].hand.sort((a,b)=>{ const so=SUITS.indexOf(a.suit)-SUITS.indexOf(b.suit); if(so!==0) return so; return RANK_VAL[a.rank]-RANK_VAL[b.rank]; });
+}
+async function dealAnimation(){
+  const stack=$('deck-stack'); stack.innerHTML='';
+  for(let i=0;i<6;i++){const c=makeCardEl({rank:'9',suit:'spades'},false); c.style.transform=`translate(${i*0.6}px,${-i*0.6}px)`; stack.appendChild(c);}
+  await sleep(160);
+  for(let s=0;s<4;s++) renderHand(s,true);
+  for(let i=0;i<24;i++) setTimeout(sndDeal,i*40);
+  await sleep(24*42+120); stack.innerHTML='';
+}
+
+/* ---------- bidding ---------- */
+async function biddingPhase(){
+  let seat=(G.dealer+1)%4, high=0, highBid=null, highSeat=null;
+  for(let i=0;i<4;i++){
+    setActiveSeat(seat);
+    const isDealer=seat===G.dealer;
+    const mustBid = G.stick && isDealer && highBid===null;
+    let decision;
+    if(seat===0){ decision=await humanBid(high,mustBid); }
+    else { await aiThink(seat); decision=aiBid(G.players[seat].hand,G.players[seat].skill,high,G.allowNT,mustBid); }
+    if(decision.type!=='pass'){
+      high=bidValue(decision); highBid=decision; highSeat=seat;
+      const txt = decision.type==='moon-alone'?'Moon alone!': decision.type==='moon-slide'?'Moon!': 'Bid '+decision.tricks;
+      speak(seat,txt, decision.type.indexOf('moon')===0?'bub-alone':'bub-call');
+      log(`${SEAT_NAME[seat]}: ${txt}.`);
+    } else { speak(seat,'Pass','bub-pass'); log(`${SEAT_NAME[seat]} passes.`); }
+    await sleep(660);
+    seat=(seat+1)%4;
+  }
+  clearActive();
+  if(highBid===null) return 'redeal';
+  G.declarer=highSeat; G.bid=highBid; G.trump=highBid.trump||null;
+  return 'play';
+}
+async function aiThink(seat){ setActiveSeat(seat); await sleep(420+Math.random()*360); }
+
+async function setupContract(){
+  // human declarer names trump (AI already chose)
+  if(G.declarer===0 && !G.trump){ G.trump=await humanNameTrump(); }
+  updateScoreboard();
+  const moon = G.bid.type==='moon-slide'||G.bid.type==='moon-alone';
+  const label = moon? (G.bid.type==='moon-alone'?'Moon (no help)':'Moon (with a slide)') : (G.bid.tricks+' '+(G.trump==='notrump'?'No-trump':cap(G.trump)));
+  log(`<b>${SEAT_NAME[G.declarer]}</b> takes the bid: <b>${label}</b>${G.trump&&G.trump!=='notrump'?' '+SUIT_SYM[G.trump]:''}.`);
+  await banner(moon?'Shooting the Moon!':`${G.bid.tricks} ${G.trump==='notrump'?'No-trump':SUIT_SYM[G.trump]||''}`,
+    `${SEAT_NAME[G.declarer]} ${moon?(G.bid.type==='moon-alone'?'alone, no help':'with a slide'):'declares trump'}`,
+    (G.trump&&SUIT_COLOR[G.trump]==='red')?'pop-bad':'pop-gold',1300);
+
+  if(moon){
+    const partner=(G.declarer+2)%4;
+    if(G.bid.type==='moon-slide'){
+      if(G.declarer===0){
+        // human declarer receives partner's best card, then discards one
+        const bi=bestCardIdx(G.players[partner].hand,G.trump); const card=G.players[partner].hand.splice(bi,1)[0];
+        G.players[0].hand.push(card); sortHand(0); renderHand(0,false);
+        await humanDiscard(`North slides you ${card.rank}${SUIT_SYM[card.suit]}. Discard one card to play your Moon.`);
+      } else if(partner===0){
+        // human is partner: slide best card to AI declarer
+        await humanSlide(G.declarer);
+        const di=discardChoice(G.players[G.declarer].hand,G.trump); G.players[G.declarer].hand.splice(di,1);
+      } else {
+        const bi=bestCardIdx(G.players[partner].hand,G.trump); const card=G.players[partner].hand.splice(bi,1)[0];
+        G.players[G.declarer].hand.push(card);
+        const di=discardChoice(G.players[G.declarer].hand,G.trump); G.players[G.declarer].hand.splice(di,1);
+      }
+    }
+    G.players[partner].sitting=true; $('lbl-'+partner).classList.add('sitting'); handEls[partner].style.opacity='.35';
+  }
+  updateScoreboard();
+}
+
+/* ---------- human bidding UIs ---------- */
+function showControls(title,buttons){
+  $('control-title').innerHTML=title; const wrap=$('control-buttons'); wrap.innerHTML='';
+  buttons.forEach(b=>{
+    const btn=document.createElement('button'); btn.className=b.cls||''; btn.innerHTML=b.label;
+    if(b.disabled) btn.disabled=true; else btn.onclick=b.onclick; wrap.appendChild(btn);
+  });
+  $('controls').classList.remove('hidden');
+}
+function hideControls(){ $('controls').classList.add('hidden'); $('control-buttons').innerHTML=''; G._bidBase=null; G._bidHintFn=null; setControlHint(); }
+
+function bestSuitEstimate(hand){
+  const cands=G.allowNT? SUITS.concat(['notrump']):SUITS.slice(); let best={trump:cands[0],est:-1};
+  for(const tr of cands){ const e=estimateTricks(hand,tr); if(e>best.est) best={trump:tr,est:e}; }
+  return best;
+}
+async function humanBid(currentHigh,mustBid){
+  const minN=Math.max(3,Math.floor(currentHigh/10)+1);
+  setStatus('Your bid.');
+  G._bidBase=`Bid how many of the 6 tricks you &amp; North will take (min 3), or pass. Highest bidder names trump.${mustBid?' <b>You must bid</b> (stick the dealer).':''}`;
+  G._bidHintFn=()=>{ const b=bestSuitEstimate(G.players[0].hand); const n=Math.round(b.est); const tn=b.trump==='notrump'?'no-trump':SUIT_SYM[b.trump]+' '+cap(b.trump); if(b.est>=5.7) return `Huge hand in ${tn} — a Moon is in reach.`; if(n>=3) return `Your best is ${tn} (~${b.est.toFixed(1)} tricks) — a bid of ${Math.max(3,n)} looks right.`; return `Only ~${b.est.toFixed(1)} tricks in ${tn} — passing is safer.`; };
+  setControlHint();
+  const btns=[];
+  for(let n=Math.max(3,minN);n<=6;n++) btns.push({label:'Bid '+n, cls:'gold', onclick:()=>answerHuman({type:'number',tricks:n})});
+  if(70>currentHigh) btns.push({label:'🌙 Moon (slide)', cls:'green', onclick:()=>answerHuman({type:'moon-slide',tricks:6})});
+  if(80>currentHigh) btns.push({label:'🌙 Moon (alone)', cls:'red', onclick:()=>answerHuman({type:'moon-alone',tricks:6})});
+  if(!mustBid) btns.push({label:'Pass', cls:'ghost', onclick:()=>answerHuman({type:'pass'})});
+  showControls(mustBid?'You must bid':'Your bid', btns);
+  const res=await waitHuman(); hideControls(); return res;
+}
+async function humanNameTrump(){
+  setStatus('You won the bid — name trump.');
+  G._bidBase='Pick the suit you want as trump'+(G.allowNT?', or no-trump':'')+'.';
+  G._bidHintFn=()=>{ const b=bestSuitEstimate(G.players[0].hand); const tn=b.trump==='notrump'?'No-trump':SUIT_SYM[b.trump]+' '+cap(b.trump); return `Strongest looks like ${tn}.`; };
+  setControlHint();
+  const btns=[];
+  SUITS.forEach(s=>btns.push({label:`<span class="${SUIT_COLOR[s]==='red'?'red':''}">${SUIT_SYM[s]}</span> ${cap(s)}`, cls:'suit-btn '+(SUIT_COLOR[s]==='red'?'red':'gold'), onclick:()=>answerHuman(s)}));
+  if(G.allowNT) btns.push({label:'No-trump', cls:'ghost', onclick:()=>answerHuman('notrump')});
+  showControls('Name trump', btns);
+  const res=await waitHuman(); hideControls(); return res;
+}
+async function humanSlide(declarer){
+  setStatus(`Slide your best card to ${SEAT_NAME[declarer]} for the Moon.`);
+  G._bidBase=`Your partner ${SEAT_NAME[declarer]} is shooting the Moon — click a card to <b>slide</b> it over (give your strongest).`;
+  G._bidHintFn=()=>{ const i=bestCardIdx(G.players[0].hand,G.trump); const c=G.players[0].hand[i]; return `Best card: ${c.rank}${SUIT_SYM[c.suit]}.`; };
+  setControlHint(); showControls('Slide a card to your partner',[]);
+  const applyHint=()=>{ G.players[0].hand.forEach(c=>{const el=G.cardEls[0][cardId(c)]; if(el) el.classList.remove('hint');}); if(G.hints){ const i=bestCardIdx(G.players[0].hand,G.trump); const el=G.cardEls[0][cardId(G.players[0].hand[i])]; if(el) el.classList.add('hint'); } };
+  applyHint(); G._refresh=applyHint; G.cardMode='slide';
+  return new Promise(r=>{ G.slideResolver=(card)=>{
+    const idx=G.players[0].hand.findIndex(c=>cardId(c)===cardId(card)); const cd=G.players[0].hand.splice(idx,1)[0];
+    G.players[declarer].hand.push(cd); renderHand(0,false);
+    log(`You slide ${cd.rank}${SUIT_SYM[cd.suit]} to ${SEAT_NAME[declarer]}.`); sndPlay(); hideControls(); G.cardMode=null; G._refresh=null; r();
+  }; });
+}
+async function humanDiscard(msg){
+  setStatus(msg||'Discard a card.');
+  G._bidBase=msg||'Click a card to discard.';
+  G._bidHintFn=()=>{ const i=discardChoice(G.players[0].hand,G.trump); const c=G.players[0].hand[i]; return `Suggested discard: ${c.rank}${SUIT_SYM[c.suit]}.`; };
+  setControlHint(); showControls('Discard one card',[]);
+  const applyHint=()=>{ G.players[0].hand.forEach(c=>{const el=G.cardEls[0][cardId(c)]; if(el) el.classList.remove('hint');}); if(G.hints){ const i=discardChoice(G.players[0].hand,G.trump); const el=G.cardEls[0][cardId(G.players[0].hand[i])]; if(el) el.classList.add('hint'); } };
+  applyHint(); G._refresh=applyHint; G.cardMode='discard';
+  return new Promise(r=>{ G.discardResolver=(card)=>{
+    const idx=G.players[0].hand.findIndex(c=>cardId(c)===cardId(card)); const cd=G.players[0].hand.splice(idx,1)[0];
+    renderHand(0,false); log(`You discard ${cd.rank}${SUIT_SYM[cd.suit]}.`); sndPlay(); hideControls(); G.cardMode=null; G._refresh=null; r();
+  }; });
+}
+
+/* ---------- trick play ---------- */
+function buildTrickOrder(leader){ const order=[]; let s=leader; for(let i=0;i<4;i++){ if(!G.players[s].sitting) order.push(s); s=(s+1)%4; } return order; }
+async function playTricks(){
+  let leader=G.declarer; while(G.players[leader].sitting) leader=(leader+1)%4;
+  setStatus(`Trump is <b>${G.trump==='notrump'?'No-trump':SUIT_SYM[G.trump]+' '+cap(G.trump)}</b>. ${SEAT_NAME[G.declarer]} must take ${G.bid.type.indexOf('moon')===0?'all 6':G.bid.tricks}.`);
+  for(let t=0;t<6;t++){
+    G.trick=[]; G.trickOrder=buildTrickOrder(leader);
+    for(const seat of G.trickOrder){
+      setActiveSeat(seat); let card;
+      if(seat===0){ card=await humanPlay(); } else { await sleep(420+Math.random()*340); card=aiPlay(seat); }
+      await playCard(seat,card);
+    }
+    clearActive();
+    const winner=trickWinner(G.trick,G.trump); G.players[winner].tricks++; updatePips(); updateScoreboard();
+    log(`${SEAT_NAME[winner]} wins trick ${t+1}.`); sndWin(); await collectTrick(winner); leader=winner; await sleep(120);
+  }
+  await scoreHand();
+}
+async function humanPlay(){
+  const ledSuit=G.trick.length?effSuit(G.trick[0].card,G.trump):null;
+  const legal=legalCards(G.players[0].hand,ledSuit,G.trump); const legalIds=new Set(legal.map(cardId));
+  G.cardMode='play';
+  function render(){
+    G.players[0].hand.forEach(c=>{ const el=G.cardEls[0][cardId(c)]; if(!el) return; el.classList.remove('playable','illegal','hint');
+      if(legalIds.has(cardId(c))) el.classList.add('playable'); else el.classList.add('illegal'); });
+    if(G.hints){ const rec=recommendPlay(); const el=G.cardEls[0][cardId(rec.card)]; if(el) el.classList.add('hint');
+      setStatus((ledSuit?`Your turn — follow <b>${SUIT_SYM[ledSuit]}</b> if you can. `:'Your turn — lead any card. ')+`<span style="color:var(--gold);font-weight:700">💡 Try ${rec.card.rank}${SUIT_SYM[rec.card.suit]}</span> — ${rec.reason}.`);
+    } else setStatus(ledSuit?`Your turn — follow <b>${SUIT_SYM[ledSuit]}</b> if you hold it.`:'Your turn — lead any card.');
+  }
+  render(); G._refresh=render;
+  const card=await waitHuman(); G._refresh=null;
+  G.players[0].hand.forEach(c=>{const el=G.cardEls[0][cardId(c)]; if(el) el.classList.remove('playable','illegal','hint');});
+  return card;
+}
+function recommendPlay(){
+  const prev=G.players[0].skill; G.players[0].skill='hard'; const card=aiPlay(0); G.players[0].skill=prev;
+  const trump=G.trump,trick=G.trick; let reason;
+  if(trick.length===0){ if(isTrump(card,trump)) reason='lead trump to pull the others'; else if(card.rank==='A') reason='lead your off-suit Ace'; else reason='lead a low, safe card'; }
+  else { const ledSuit=effSuit(trick[0].card,trump); let best=trick[0]; for(const p of trick) if(strength(p.card,trump,ledSuit)>strength(best.card,trump,ledSuit)) best=p;
+    const partnerWinning=best.seat===(0+2)%4 && !G.players[2].sitting;
+    if(strength(card,trump,ledSuit)>strength(best.card,trump,ledSuit)) reason='this takes the trick';
+    else if(partnerWinning) reason='partner is winning — save your good cards';
+    else reason="you can't win it — throw your weakest"; }
+  return {card,reason};
+}
+function onHumanCardClick(card,ce){
+  if(G.cardMode==='slide' && G.slideResolver){ const r=G.slideResolver; G.slideResolver=null; r(card); return; }
+  if(G.cardMode==='discard' && G.discardResolver){ const r=G.discardResolver; G.discardResolver=null; r(card); return; }
+  if(!resolveHuman) return;
+  if(!ce.classList.contains('playable')){ ce.classList.add('illegal'); sndBad(); ce.animate([{transform:ce.style.transform},{transform:ce.style.transform+' translateX(-6px)'},{transform:ce.style.transform+' translateX(6px)'},{transform:ce.style.transform}],{duration:240}); return; }
+  answerHuman(card);
+}
+async function playCard(seat,card){
+  const idx=G.players[seat].hand.findIndex(c=>cardId(c)===cardId(card)); if(idx>=0) G.players[seat].hand.splice(idx,1);
+  let ce=G.cardEls[seat]&&G.cardEls[seat][cardId(card)];
+  if(!ce){ ce=makeCardEl(card,true); handEls[seat].appendChild(ce); }
+  G.trick.push({seat,card}); sndPlay(); flyToSlot(ce,trickSlots[seat]); layoutHand(seat); await sleep(440);
+}
+
+/* ---------- scoring ---------- */
+async function scoreHand(){
+  const bt=G.declarer%2;
+  const t0=G.players[0].tricks+G.players[2].tricks, t1=G.players[1].tricks+G.players[3].tricks;
+  const bidTeamTricks = bt===0?t0:t1, defTeamTricks = bt===0?t1:t0;
+  const moon = G.bid.type==='moon-slide'||G.bid.type==='moon-alone';
+  let d=[0,0], headline, sub, cls;
+  if(moon){
+    const made=bidTeamTricks===6; const val=G.bid.type==='moon-alone'?MOON_ALONE:MOON_SLIDE;
+    if(made){ d[bt]+=val; headline='MOON MADE! +'+val; } else { d[bt]-=val; headline='Moon set! −'+val; }
+    if(G.scoringStyle==='tricks') d[1-bt]+=defTeamTricks;
+    sub=`${SEAT_NAME[G.declarer]} ${made?'swept all 6 alone':'fell short of the Moon'}`;
+  } else {
+    const bidN=G.bid.tricks; const made=bidTeamTricks>=bidN;
+    if(G.scoringStyle==='bid'){ d[bt]+= made? bidN : -bidN; }
+    else if(G.scoringStyle==='bidder'){ d[bt]+= made? bidTeamTricks : -bidN; }
+    else { d[bt]+= made? bidTeamTricks : -bidN; d[1-bt]+=defTeamTricks; }
+    headline = made? `Bid made! +${G.scoringStyle==='bid'?bidN:bidTeamTricks}` : `EUCHRED! −${bidN}`;
+    sub=`${SEAT_NAME[G.declarer]}'s team bid ${bidN}, took ${bidTeamTricks}`;
+  }
+  G.scores[0]+=d[0]; G.scores[1]+=d[1];
+  cls = (d[0]>d[1])? 'pop-good' : (d[1]>d[0]? 'pop-bad':'pop-gold');
+  updateScoreboard();
+  log(`<b>Result:</b> Your team ${d[0]>=0?'+':''}${d[0]}, Opponents ${d[1]>=0?'+':''}${d[1]} (tricks ${t0}–${t1}).`);
+  sndPoint();
+  await banner(headline, sub, cls, 1900);
+  if(G.scores[0]>=G.target || G.scores[1]>=G.target) return endGame();
+  G.dealer=(G.dealer+1)%4; setStatus('Hand complete. Dealing next hand…'); await sleep(450); nextHand();
+}
+function endGame(){
+  const youWin=G.scores[0]>=G.target && G.scores[0]>=G.scores[1];
+  $('go-title').textContent=youWin?'You Win! 🎉':'You Lose';
+  $('go-line').innerHTML=youWin?'You and North take the match.':'West and East take the match.';
+  $('go-line').className='winline '+(youWin?'pop-good':'pop-bad');
+  $('go-score').textContent=`Final — Your team ${G.scores[0]} · Opponents ${G.scores[1]}`;
+  $('gameover').classList.remove('hidden'); if(youWin) sndPoint();
+}
+
+/* ============================================================ SETUP ============ */
+const DIFFS=['easy','medium','hard'];
+function buildSegs(){
+  document.querySelectorAll('.seg').forEach(seg=>{
+    const seat=+seg.dataset.seat; seg.classList.add('diff-'+G.players[seat].skill);
+    DIFFS.forEach(d=>{ const b=document.createElement('button'); b.textContent=cap(d); b.dataset.diff=d; if(G.players[seat].skill===d) b.classList.add('sel');
+      b.onclick=()=>{ G.players[seat].skill=d; seg.className='seg diff-'+d; seg.dataset.seat=seat; [...seg.children].forEach(c=>c.classList.toggle('sel',c.dataset.diff===d)); };
+      seg.appendChild(b); });
+  });
+}
+function initHandlers(){
+  $('rules-toggle').onclick=()=>$('rules-text').classList.toggle('hidden');
+  $('btn-start').onclick=()=>{
+    G.target=+$('target-select').value; G.stick=$('stick-select').value==='on';
+    G.scoringStyle=$('score-select').value; G.allowNT=$('nt-select').value==='on';
+    $('setup').classList.add('hidden'); $('gameover').classList.add('hidden');
+    try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();}catch(e){}
+    startGame();
+  };
+  $('btn-rematch').onclick=()=>{ $('gameover').classList.add('hidden'); startGame(); };
+  $('btn-newsetup').onclick=()=>{ $('gameover').classList.add('hidden'); $('setup').classList.remove('hidden'); };
+  $('btn-menu').onclick=()=>{ if(confirm('Return to the setup menu? The current game will be lost.')) $('setup').classList.remove('hidden'); };
+  $('btn-sound').onclick=()=>{ G.sound=!G.sound; $('btn-sound').textContent=G.sound?'🔊 Sound':'🔇 Muted'; if(G.sound) sndPlay(); };
+  $('btn-hints').onclick=()=>{ G.hints=!G.hints; $('btn-hints').textContent=G.hints?'💡 Hints: On':'💡 Hints: Off'; $('btn-hints').classList.toggle('green',G.hints); setControlHint(); if(G._refresh) G._refresh(); if(G.hints) log('Hints on — suggestions will be highlighted.'); };
+  const openHelp=()=>{ $('help-target').textContent=G.target; $('help').classList.remove('hidden'); };
+  $('btn-help').onclick=openHelp; $('btn-help-close').onclick=()=>$('help').classList.add('hidden');
+  $('help').onclick=(e)=>{ if(e.target.id==='help') $('help').classList.add('hidden'); };
+  window.addEventListener('resize',()=>{ for(let s=0;s<4;s++) layoutHand(s); positionDealerChip(); });
+}
+buildSegs(); initHandlers();
+</script>
+</body>
+</html>
